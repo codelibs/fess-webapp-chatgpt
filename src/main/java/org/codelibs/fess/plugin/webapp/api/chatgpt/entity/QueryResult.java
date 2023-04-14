@@ -15,17 +15,15 @@
  */
 package org.codelibs.fess.plugin.webapp.api.chatgpt.entity;
 
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import org.apache.commons.text.StringEscapeUtils;
 import org.apache.poi.util.StringUtil;
-import org.codelibs.core.CoreLibConstants;
+import org.codelibs.fess.Constants;
 import org.codelibs.fess.entity.SearchRenderData;
 import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.util.ComponentUtil;
@@ -68,7 +66,7 @@ public class QueryResult {
             buf.append(",\"metadata\":").append(metadata.toJsonString());
             buf.append(",\"score\":").append(score);
             if (text != null) {
-                buf.append(",\"text\":\"").append(text).append('"');
+                buf.append(",\"text\":\"").append(StringEscapeUtils.escapeJson(text)).append('"');
             }
             if (embedding != null) {
 
@@ -118,9 +116,11 @@ public class QueryResult {
         }
     }
 
-    public static QueryResult create(final SearchRenderData data) {
+    public static QueryResult create(final Query query, final SearchRenderData data) {
         final FessConfig fessConfig = ComponentUtil.getFessConfig();
-        final Document[] documents = data.getDocumentItems().stream().map(e -> {
+        final List<Map<String, Object>> documentItems = data.getDocumentItems();
+        final float maxScore = getMaxScore(documentItems);
+        final Document[] documents = documentItems.stream().map(e -> {
             final DocumentMetadata metadata = new DocumentMetadata();
             if (e.get("source") instanceof final String source) {
                 switch (source) {
@@ -146,9 +146,8 @@ public class QueryResult {
             if (e.get(fessConfig.getIndexFieldUrl()) instanceof final String url) {
                 metadata.url = url;
             }
-            if (e.get(fessConfig.getIndexFieldTimestamp()) instanceof final Date createdAt) {
-                final SimpleDateFormat sdf = new SimpleDateFormat(CoreLibConstants.DATE_FORMAT_ISO_8601_EXTEND, Locale.ROOT);
-                metadata.createdAt = sdf.format(createdAt);
+            if (e.get(fessConfig.getIndexFieldTimestamp()) instanceof final String createdAt) {
+                metadata.createdAt = createdAt;
             }
             if (e.get("author") instanceof final String author) {
                 metadata.author = author;
@@ -161,11 +160,21 @@ public class QueryResult {
             if (e.get(fessConfig.getIndexFieldContent()) instanceof final String text) {
                 document.text = text;
             }
-            if (e.get("score") instanceof final Number score) {
-                document.score = score.floatValue();
+            if (e.get(Constants.SCORE) instanceof final Number score) {
+                document.score = score.floatValue() / maxScore;
             }
             return document;
         }).toArray(n -> new Document[n]);
-        return new QueryResult(data.getSearchQuery(), documents);
+        return new QueryResult(query.getQuery(), documents);
+    }
+
+    protected static float getMaxScore(final List<Map<String, Object>> documentItems) {
+        if (!documentItems.isEmpty()) {
+            final Map<String, Object> doc = documentItems.get(0);
+            if (doc.get(Constants.SCORE) instanceof final Number score && score.floatValue() > 1.0f) {
+                return score.floatValue();
+            }
+        }
+        return 1.0f;
     }
 }

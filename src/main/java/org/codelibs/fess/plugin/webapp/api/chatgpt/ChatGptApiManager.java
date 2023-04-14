@@ -65,6 +65,8 @@ public class ChatGptApiManager extends BaseApiManager {
 
     protected String mimeType = "application/json";
 
+    private String[] responseFields;
+
     public ChatGptApiManager() {
         setPathPrefix("/chatgpt");
     }
@@ -74,7 +76,10 @@ public class ChatGptApiManager extends BaseApiManager {
         if (logger.isInfoEnabled()) {
             logger.info("Load {}", this.getClass().getSimpleName());
         }
-        // TODO init app
+
+        responseFields =
+                System.getProperty("fess.chatgpt.response_fields", "source,filename,url,timestamp,author,doc_id,content").split(",");
+
         ComponentUtil.getWebApiManagerFactory().add(this);
     }
 
@@ -118,7 +123,7 @@ public class ChatGptApiManager extends BaseApiManager {
                     return;
                 }
                 case "query": {
-                    if (!"post".equalsIgnoreCase(request.getMethod())) {
+                    if ("post".equalsIgnoreCase(request.getMethod())) {
                         processQueries(request, response);
                         return;
                     }
@@ -138,6 +143,7 @@ public class ChatGptApiManager extends BaseApiManager {
 
     protected void processQueries(final HttpServletRequest request, final HttpServletResponse response) {
         final FessConfig fessConfig = ComponentUtil.getFessConfig();
+        request.setAttribute(Constants.SEARCH_LOG_ACCESS_TYPE, Constants.SEARCH_LOG_ACCESS_TYPE_JSON);
         try (QueryParser parser = new QueryParser(request.getInputStream())) {
             final StringBuilder buf = new StringBuilder(1000);
             buf.append("{\"results\":[");
@@ -155,13 +161,11 @@ public class ChatGptApiManager extends BaseApiManager {
     protected String processQuery(final HttpServletRequest request, final HttpServletResponse response, final Query query,
             final FessConfig fessConfig) {
         final SearchHelper searchHelper = ComponentUtil.getSearchHelper();
-
-        request.setAttribute(Constants.SEARCH_LOG_ACCESS_TYPE, Constants.SEARCH_LOG_ACCESS_TYPE_JSON);
         try {
             final SearchRenderData data = new SearchRenderData();
-            final QueryRequestParams params = new QueryRequestParams(request, fessConfig, query);
+            final QueryRequestParams params = new QueryRequestParams(request, fessConfig, query, responseFields);
             searchHelper.search(params, data, OptionalThing.empty());
-            final QueryResult queryResult = QueryResult.create(data);
+            final QueryResult queryResult = QueryResult.create(query, data);
             return queryResult.toJsonString();
         } catch (final InvalidQueryException | ResultOffsetExceededException e) {
             if (logger.isDebugEnabled()) {
@@ -242,11 +246,14 @@ public class ChatGptApiManager extends BaseApiManager {
         private final HttpServletRequest request;
         private final FessConfig fessConfig;
         private final Query query;
+        private final String[] responseFields;
 
-        protected QueryRequestParams(final HttpServletRequest request, final FessConfig fessConfig, final Query query) {
+        protected QueryRequestParams(final HttpServletRequest request, final FessConfig fessConfig, final Query query,
+                final String[] responseFields) {
             this.request = request;
             this.fessConfig = fessConfig;
             this.query = query;
+            this.responseFields = responseFields;
         }
 
         @Override
@@ -356,6 +363,11 @@ public class ChatGptApiManager extends BaseApiManager {
         @Override
         public String getSimilarDocHash() {
             return null;
+        }
+
+        @Override
+        public String[] getResponseFields() {
+            return responseFields;
         }
     }
 
