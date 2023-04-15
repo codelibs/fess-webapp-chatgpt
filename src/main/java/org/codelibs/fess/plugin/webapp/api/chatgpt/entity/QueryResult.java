@@ -31,9 +31,9 @@ import org.codelibs.fess.util.ComponentUtil;
 public class QueryResult {
     protected final String query;
 
-    protected final Document[] documents;
+    protected final DocumentResult[] documents;
 
-    protected QueryResult(final String query, final Document[] documents) {
+    protected QueryResult(final String query, final DocumentResult[] documents) {
         this.query = query;
         this.documents = documents;
     }
@@ -41,21 +41,21 @@ public class QueryResult {
     public String toJsonString() {
         final StringBuilder buf = new StringBuilder(1000);
         buf.append("{\"query\":\"").append(StringEscapeUtils.escapeJson(query)).append("\"");
-        buf.append(",\"results\":[").append(Arrays.stream(documents).map(Document::toJsonString).collect(Collectors.joining(",")))
+        buf.append(",\"results\":[").append(Arrays.stream(documents).map(DocumentResult::toJsonString).collect(Collectors.joining(",")))
                 .append(']');
         buf.append(",\"top_k\":").append(documents.length);
         buf.append('}');
         return buf.toString();
     }
 
-    public static class Document {
+    public static class DocumentResult {
         protected final String id;
         protected String text;
         protected float score = 0.0f;
         protected float[] embedding = null;
-        protected final DocumentMetadata metadata;
+        protected final DocumentMetadataResult metadata;
 
-        public Document(final String id, final DocumentMetadata metadata) {
+        public DocumentResult(final String id, final DocumentMetadataResult metadata) {
             this.id = id;
             this.metadata = metadata;
         }
@@ -84,7 +84,7 @@ public class QueryResult {
         }
     }
 
-    public static class DocumentMetadata {
+    public static class DocumentMetadataResult {
         protected Source source = Source.UNKNOWN;
         protected String sourceId;
         protected String url;
@@ -120,25 +120,27 @@ public class QueryResult {
         final FessConfig fessConfig = ComponentUtil.getFessConfig();
         final List<Map<String, Object>> documentItems = data.getDocumentItems();
         final float maxScore = getMaxScore(documentItems);
-        final Document[] documents = documentItems.stream().map(e -> {
-            final DocumentMetadata metadata = new DocumentMetadata();
-            if (e.get("source") instanceof final String source) {
-                switch (source) {
-                case "email": {
-                    metadata.source = Source.EMAIL;
-                    break;
-                }
-                case "chat": {
-                    metadata.source = Source.CHAT;
-                    break;
-                }
-                case "file": {
-                    metadata.source = Source.FILE;
-                    break;
-                }
-                default:
-                    break;
-                }
+        final DocumentResult[] documents = documentItems.stream().map(e -> {
+            final DocumentMetadataResult metadata = new DocumentMetadataResult();
+            if (e.get(fessConfig.getIndexFieldLabel()) instanceof final List<?> labelList) {
+                labelList.stream().forEach(o -> {
+                    switch (o.toString()) {
+                    case "email": {
+                        metadata.source = Source.EMAIL;
+                        break;
+                    }
+                    case "chat": {
+                        metadata.source = Source.CHAT;
+                        break;
+                    }
+                    case "file": {
+                        metadata.source = Source.FILE;
+                        break;
+                    }
+                    default:
+                        break;
+                    }
+                });
             }
             if (e.get(fessConfig.getIndexFieldFilename()) instanceof final String sourceId) {
                 metadata.sourceId = sourceId;
@@ -156,7 +158,7 @@ public class QueryResult {
                 metadata.documentId = documentId;
             }
 
-            final Document document = new Document(e.get(fessConfig.getIndexFieldId()).toString(), metadata);
+            final DocumentResult document = new DocumentResult(e.get(fessConfig.getIndexFieldId()).toString(), metadata);
             if (e.get(fessConfig.getIndexFieldContent()) instanceof final String text) {
                 document.text = text;
             }
@@ -164,7 +166,7 @@ public class QueryResult {
                 document.score = score.floatValue() / maxScore;
             }
             return document;
-        }).toArray(n -> new Document[n]);
+        }).toArray(n -> new DocumentResult[n]);
         return new QueryResult(query.getQuery(), documents);
     }
 

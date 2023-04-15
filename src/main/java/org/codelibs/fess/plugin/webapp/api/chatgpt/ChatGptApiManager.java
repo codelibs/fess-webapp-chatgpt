@@ -18,9 +18,11 @@ package org.codelibs.fess.plugin.webapp.api.chatgpt;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
@@ -37,6 +39,7 @@ import org.apache.commons.text.StringEscapeUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.codelibs.core.lang.StringUtil;
+import org.codelibs.core.security.MessageDigestUtil;
 import org.codelibs.fess.Constants;
 import org.codelibs.fess.api.BaseApiManager;
 import org.codelibs.fess.entity.FacetInfo;
@@ -44,17 +47,24 @@ import org.codelibs.fess.entity.GeoInfo;
 import org.codelibs.fess.entity.HighlightInfo;
 import org.codelibs.fess.entity.SearchRenderData;
 import org.codelibs.fess.entity.SearchRequestParams;
+import org.codelibs.fess.es.client.SearchEngineClient;
 import org.codelibs.fess.exception.InvalidAccessTokenException;
 import org.codelibs.fess.exception.InvalidQueryException;
 import org.codelibs.fess.exception.ResultOffsetExceededException;
+import org.codelibs.fess.helper.CrawlingInfoHelper;
 import org.codelibs.fess.helper.SearchHelper;
+import org.codelibs.fess.helper.SystemHelper;
 import org.codelibs.fess.mylasta.direction.FessConfig;
+import org.codelibs.fess.plugin.webapp.api.chatgpt.entity.Document;
+import org.codelibs.fess.plugin.webapp.api.chatgpt.entity.Document.Metadata;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.entity.Query;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.entity.Query.Filter;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.entity.QueryResult;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.entity.Source;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.exception.FessChatGptResponseException;
+import org.codelibs.fess.plugin.webapp.api.chatgpt.parser.DocumentParser;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.parser.QueryParser;
+import org.codelibs.fess.plugin.webapp.api.chatgpt.util.DateUtil;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.optional.OptionalThing;
 import org.lastaflute.web.util.LaResponseUtil;
@@ -63,9 +73,21 @@ public class ChatGptApiManager extends BaseApiManager {
 
     private static final Logger logger = LogManager.getLogger(ChatGptApiManager.class);
 
+    protected static final String AUTHOR_FIELD = "author";
+
     protected String mimeType = "application/json";
 
-    private String[] responseFields;
+    protected String[] responseFields;
+
+    protected String baseUrl;
+
+    protected List<String> defaultRoleList;
+
+    protected List<String> defaultVirtualHostList;
+
+    protected String defaultHost;
+
+    protected String defaultConfigId;
 
     public ChatGptApiManager() {
         setPathPrefix("/chatgpt");
@@ -77,8 +99,15 @@ public class ChatGptApiManager extends BaseApiManager {
             logger.info("Load {}", this.getClass().getSimpleName());
         }
 
-        responseFields =
-                System.getProperty("fess.chatgpt.response_fields", "source,filename,url,timestamp,author,doc_id,content").split(",");
+        baseUrl = System.getProperty("fess.chatgpt.base_url", "https://github.com/codelibs/fess-webapp-chatgpt");
+        responseFields = System.getProperty("fess.chatgpt.response_fields", "source,filename,url,timestamp,doc_id,content," + AUTHOR_FIELD)
+                .split(",");
+        defaultRoleList = Arrays.stream(System.getProperty("fess.chatgpt.default.roles", "Rguest").split(","))
+                .filter(StringUtil::isNotBlank).collect(Collectors.toList());
+        defaultVirtualHostList = Arrays.stream(System.getProperty("fess.chatgpt.default.virtual_hosts", StringUtil.EMPTY).split(","))
+                .filter(StringUtil::isNotBlank).collect(Collectors.toList());
+        defaultHost = System.getProperty("fess.chatgpt.default.host", "chatgpt");
+        defaultConfigId = System.getProperty("fess.chatgpt.default.config_id", "chatgpt");
 
         ComponentUtil.getWebApiManagerFactory().add(this);
     }
@@ -116,15 +145,18 @@ public class ChatGptApiManager extends BaseApiManager {
                 switch (values[2]) {
                 case "upsert-file": {
                     // TODO
+                    writeErrorResponse(HttpServletResponse.SC_NOT_FOUND, "Your request is not supported.", StringUtil.EMPTY_STRINGS);
                     return;
                 }
                 case "upsert": {
-                    // TODO
-                    return;
+                    if ("post".equalsIgnoreCase(request.getMethod())) {
+                        processUpsert(request, response);
+                        return;
+                    }
                 }
                 case "query": {
                     if ("post".equalsIgnoreCase(request.getMethod())) {
-                        processQueries(request, response);
+                        processQuery(request, response);
                         return;
                     }
                     break;
@@ -141,7 +173,84 @@ public class ChatGptApiManager extends BaseApiManager {
         writeErrorResponse(HttpServletResponse.SC_NOT_FOUND, "Cannot understand your request.", StringUtil.EMPTY_STRINGS);
     }
 
-    protected void processQueries(final HttpServletRequest request, final HttpServletResponse response) {
+    protected void processUpsert(final HttpServletRequest request, final HttpServletResponse response) {
+        final SearchEngineClient client = ComponentUtil.getSearchEngineClient();
+        final FessConfig fessConfig = ComponentUtil.getFessConfig();
+        final String segment = new SimpleDateFormat("yyyyMMddHHmmssSSS").format(ComponentUtil.getSystemHelper().getCurrentTime());
+        try (DocumentParser parser = new DocumentParser(request.getInputStream())) {
+            final Document[] documents = parser.parse();
+            final List<Map<String, Object>> docList =
+                    Arrays.stream(documents).map(d -> createDocMap(segment, d, fessConfig)).collect(Collectors.toList());
+            final String[] docIds = client.addAll(fessConfig.getIndexDocumentUpdateIndex(), docList, (doc, builder) -> {});
+            final StringBuilder buf = new StringBuilder(1000);
+            buf.append("{\"ids\":[")
+                    .append(Arrays.stream(docIds).map(s -> "\"" + StringEscapeUtils.escapeJson(s) + "\"").collect(Collectors.joining(",")))
+                    .append("]}");
+            response.setStatus(HttpServletResponse.SC_OK);
+            write(buf.toString(), mimeType, Constants.UTF_8);
+        } catch (final Exception e) {
+            throwErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
+        }
+    }
+
+    protected Map<String, Object> createDocMap(final String segment, final Document document, final FessConfig fessConfig) {
+        final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
+        final Map<String, Object> docMap = new HashMap<>();
+        docMap.put(fessConfig.getIndexFieldContent(), document.getText());
+        final Metadata metadata = document.getMetadata();
+        if (metadata.getSource() != Source.UNKNOWN) {
+            docMap.put(fessConfig.getIndexFieldLabel(), Arrays.asList(metadata.getSource().name()));
+        }
+        if (StringUtil.isNotBlank(metadata.getSourceId())) {
+            docMap.put(fessConfig.getIndexFieldFilename(), metadata.getSourceId());
+        } else {
+            docMap.put(fessConfig.getIndexFieldFilename(), StringUtil.EMPTY);
+        }
+        if (StringUtil.isNotBlank(metadata.getUrl())) {
+            docMap.put(fessConfig.getIndexFieldUrl(), metadata.getUrl());
+        } else {
+            final String digest = MessageDigestUtil.digest(ComponentUtil.getFessConfig().getIndexIdDigestAlgorithm(), document.getText());
+            docMap.put(fessConfig.getIndexFieldUrl(), baseUrl + "?" + digest);
+        }
+        if (StringUtil.isNotBlank(metadata.getAuthor())) {
+            docMap.put(AUTHOR_FIELD, metadata.getAuthor());
+        }
+        docMap.put(fessConfig.getIndexFieldContent(), document.getText());
+        final String createdAt =
+                DateUtil.format(metadata.getCreatedAt() != 0L ? metadata.getCreatedAt() : systemHelper.getCurrentTime().getTime());
+        docMap.put(fessConfig.getIndexFieldTimestamp(), createdAt);
+        docMap.put(fessConfig.getIndexFieldLastModified(), createdAt);
+        docMap.put(fessConfig.getIndexFieldCreated(), createdAt);
+
+        docMap.put(fessConfig.getIndexFieldFiletype(), "txt");
+        docMap.put(fessConfig.getIndexFieldRole(), defaultRoleList);
+        docMap.put(fessConfig.getIndexFieldClickCount(), 0);
+        docMap.put(fessConfig.getIndexFieldTitle(), StringUtil.EMPTY);
+        docMap.put(fessConfig.getIndexFieldSegment(), segment);
+        docMap.put(fessConfig.getIndexFieldDigest(), StringUtil.EMPTY);
+        docMap.put(fessConfig.getIndexFieldHost(), defaultHost);
+        docMap.put(fessConfig.getIndexFieldFavoriteCount(), 0);
+        docMap.put(fessConfig.getIndexFieldContentLength(), document.getText().length());
+        docMap.put(fessConfig.getIndexFieldVirtualHost(), defaultVirtualHostList);
+        docMap.put(fessConfig.getIndexFieldConfigId(), defaultConfigId);
+        docMap.put(fessConfig.getIndexFieldParentId(), StringUtil.EMPTY);
+        docMap.put(fessConfig.getIndexFieldAnchor(), StringUtil.EMPTY_STRINGS);
+        docMap.put(fessConfig.getIndexFieldBoost(), 1.0f);
+        docMap.put(fessConfig.getIndexFieldMimetype(), "text/plain");
+
+        ComponentUtil.getLanguageHelper().updateDocument(docMap);
+        docMap.put(fessConfig.getIndexFieldDocId(), systemHelper.generateDocId(docMap));
+
+        if (StringUtil.isNotBlank(document.getId())) {
+            docMap.put(fessConfig.getIndexFieldId(), document.getId());
+        } else {
+            final CrawlingInfoHelper crawlingInfoHelper = ComponentUtil.getCrawlingInfoHelper();
+            docMap.put(fessConfig.getIndexFieldId(), crawlingInfoHelper.generateId(docMap));
+        }
+        return docMap;
+    }
+
+    protected void processQuery(final HttpServletRequest request, final HttpServletResponse response) {
         final FessConfig fessConfig = ComponentUtil.getFessConfig();
         request.setAttribute(Constants.SEARCH_LOG_ACCESS_TYPE, Constants.SEARCH_LOG_ACCESS_TYPE_JSON);
         try (QueryParser parser = new QueryParser(request.getInputStream())) {
@@ -154,7 +263,7 @@ public class ChatGptApiManager extends BaseApiManager {
             response.setStatus(HttpServletResponse.SC_OK);
             write(buf.toString(), mimeType, Constants.UTF_8);
         } catch (final Exception e) {
-            throwErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.");
+            throwErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
         }
     }
 
@@ -269,13 +378,13 @@ public class ChatGptApiManager extends BaseApiManager {
                 fieldMap.put(fessConfig.getIndexFieldDocId(), new String[] { filter.getDocumentId() });
             }
             if (filter.getSource() != Source.UNKNOWN) {
-                fieldMap.put("source_id", new String[] { filter.getSource().name() });
+                fieldMap.put(fessConfig.getIndexFieldLabel(), new String[] { filter.getSource().name() });
             }
             if (StringUtil.isNotBlank(filter.getSourceId())) {
-                fieldMap.put("source_id", new String[] { filter.getSourceId() });
+                fieldMap.put(fessConfig.getIndexFieldFilename(), new String[] { filter.getSourceId() });
             }
             if (StringUtil.isNotBlank(filter.getAuthor())) {
-                fieldMap.put("author", new String[] { filter.getAuthor() });
+                fieldMap.put(AUTHOR_FIELD, new String[] { filter.getAuthor() });
             }
             return fieldMap;
         }
