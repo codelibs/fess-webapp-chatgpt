@@ -24,8 +24,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/UpsertResponse"
-        "422":
-          description: Validation Error
+        "401":
+          description: Unauthorized Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+        "404":
+          description: Bad Request or Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+        "500":
+          description: Internal Server Error
           content:
             application/json:
               schema:
@@ -50,8 +62,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/QueryResponse"
-        "422":
-          description: Validation Error
+        "401":
+          description: Unauthorized Request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+        "404":
+          description: Bad Request or Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HTTPValidationError"
+        "500":
+          description: Internal Server Error
           content:
             application/json:
               schema:

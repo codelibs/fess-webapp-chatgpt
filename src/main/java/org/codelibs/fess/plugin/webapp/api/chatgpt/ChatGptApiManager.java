@@ -15,7 +15,12 @@
  */
 package org.codelibs.fess.plugin.webapp.api.chatgpt;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.text.SimpleDateFormat;
@@ -38,6 +43,8 @@ import javax.servlet.http.HttpServletResponse;
 import org.apache.commons.text.StringEscapeUtils;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.codelibs.core.io.CopyUtil;
+import org.codelibs.core.io.ResourceUtil;
 import org.codelibs.core.lang.StringUtil;
 import org.codelibs.core.security.MessageDigestUtil;
 import org.codelibs.fess.Constants;
@@ -72,6 +79,14 @@ import org.lastaflute.web.util.LaResponseUtil;
 public class ChatGptApiManager extends BaseApiManager {
 
     private static final Logger logger = LogManager.getLogger(ChatGptApiManager.class);
+
+    protected static final String LOCALHOST_URL = "http://localhost:8080";
+
+    protected static final String OPENAPI_YAML_PATH = "/.well-known/openapi.yaml";
+
+    protected static final String LOGO_PNG_PATH = "/.well-known/logo.png";
+
+    protected static final String AI_PLUGIN_JSON_PATH = "/.well-known/ai-plugin.json";
 
     protected static final String AUTHOR_FIELD = "author";
 
@@ -115,7 +130,14 @@ public class ChatGptApiManager extends BaseApiManager {
     @Override
     public boolean matches(final HttpServletRequest request) {
         final String servletPath = request.getServletPath();
-        return servletPath.startsWith(pathPrefix);
+        if (servletPath.startsWith(pathPrefix)) {
+            return true;
+        }
+        if ("get".equalsIgnoreCase(request.getMethod()) && (AI_PLUGIN_JSON_PATH.equals(servletPath) || LOGO_PNG_PATH.equals(servletPath)
+                || OPENAPI_YAML_PATH.equals(servletPath))) {
+            return true;
+        }
+        return false;
     }
 
     @Override
@@ -123,16 +145,16 @@ public class ChatGptApiManager extends BaseApiManager {
             throws IOException, ServletException {
         final String servletPath = request.getServletPath();
         switch (servletPath) {
-        case "/.well-known/ai-plugin.json": {
-            // TODO
+        case AI_PLUGIN_JSON_PATH: {
+            processAiPluginJson(response);
             return;
         }
-        case "/.well-known/logo.png": {
-            // TODO
+        case LOGO_PNG_PATH: {
+            processLogoPng(response);
             return;
         }
-        case "/.well-known/openapi.yaml": {
-            // TODO
+        case OPENAPI_YAML_PATH: {
+            processOpenApiYaml(response);
             return;
         }
         default:
@@ -171,6 +193,51 @@ public class ChatGptApiManager extends BaseApiManager {
         }
 
         writeErrorResponse(HttpServletResponse.SC_NOT_FOUND, "Cannot understand your request.", StringUtil.EMPTY_STRINGS);
+    }
+
+    protected void processOpenApiYaml(final HttpServletResponse response) {
+        final StringBuilder buf = new StringBuilder(8000);
+        try (final BufferedReader br = new BufferedReader(
+                new InputStreamReader(ResourceUtil.getResourceAsStream("/chatgpt/openapi.yaml"), Constants.CHARSET_UTF_8))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                buf.append(line).append('\n');
+            }
+
+            final String url = System.getProperty("fess.chatgpt.openapi.url", LOCALHOST_URL + "/chatgpt");
+            response.setStatus(HttpServletResponse.SC_OK);
+            write(buf.toString().replace(LOCALHOST_URL + "/chatgpt", url), "application/x-yaml", Constants.UTF_8);
+        } catch (final Exception e) {
+            throwErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
+        }
+    }
+
+    protected void processAiPluginJson(final HttpServletResponse response) {
+        final StringBuilder buf = new StringBuilder(8000);
+        try (final BufferedReader br = new BufferedReader(
+                new InputStreamReader(ResourceUtil.getResourceAsStream("/chatgpt/ai-plugin.json"), Constants.CHARSET_UTF_8))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                buf.append(line).append('\n');
+            }
+
+            final String openapiYamlUrl = System.getProperty("fess.chatgpt.openapi_yaml.url", LOCALHOST_URL + OPENAPI_YAML_PATH);
+            final String logoUrl = System.getProperty("fess.chatgpt.logo.url", LOCALHOST_URL + LOGO_PNG_PATH);
+            response.setStatus(HttpServletResponse.SC_OK);
+            write(buf.toString().replace(LOCALHOST_URL + OPENAPI_YAML_PATH, openapiYamlUrl).replace(LOCALHOST_URL + LOGO_PNG_PATH, logoUrl),
+                    "application/json", Constants.UTF_8);
+        } catch (final Exception e) {
+            throwErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
+        }
+    }
+
+    protected void processLogoPng(final HttpServletResponse response) {
+        try (InputStream in = new BufferedInputStream(ResourceUtil.getResourceAsStream("/chatgpt/ai-plugin.json"));
+                OutputStream out = response.getOutputStream()) {
+            CopyUtil.copy(in, out);
+        } catch (final Exception e) {
+            throwErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
+        }
     }
 
     protected void processUpsert(final HttpServletRequest request, final HttpServletResponse response) {

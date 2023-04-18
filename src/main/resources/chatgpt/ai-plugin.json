@@ -10,10 +10,10 @@
 	},
 	"api": {
 		"type": "openapi",
-		"url": "https://your-app-url.com/.well-known/openapi.yaml",
+		"url": "http://localhost:8080/.well-known/openapi.yaml",
 		"has_user_authentication": false
 	},
-	"logo_url": "https://your-app-url.com/.well-known/logo.png",
+	"logo_url": "http://localhost:8080/.well-known/logo.png",
 	"contact_email": "info@codelibs.co",
 	"legal_info_url": "https://codelibs.co/"
 }
