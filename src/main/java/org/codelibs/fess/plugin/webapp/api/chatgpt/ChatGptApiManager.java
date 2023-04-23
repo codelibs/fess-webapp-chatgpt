@@ -24,6 +24,7 @@ import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
@@ -62,6 +63,7 @@ import org.codelibs.fess.helper.CrawlingInfoHelper;
 import org.codelibs.fess.helper.SearchHelper;
 import org.codelibs.fess.helper.SystemHelper;
 import org.codelibs.fess.mylasta.direction.FessConfig;
+import org.codelibs.fess.plugin.webapp.api.chatgpt.auth.PluginAuthenticator;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.entity.Document;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.entity.Document.Metadata;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.entity.Query;
@@ -79,6 +81,8 @@ import org.lastaflute.web.util.LaResponseUtil;
 public class ChatGptApiManager extends BaseApiManager {
 
     private static final Logger logger = LogManager.getLogger(ChatGptApiManager.class);
+
+    protected static final String CHATGPT_PERMISSION_LIST = "chatgpt.permissionList";
 
     protected static final String LOCALHOST_URL = "http://localhost:8080";
 
@@ -104,6 +108,8 @@ public class ChatGptApiManager extends BaseApiManager {
 
     protected String defaultConfigId;
 
+    protected PluginAuthenticator pluginAuthenticator;
+
     public ChatGptApiManager() {
         setPathPrefix("/chatgpt");
     }
@@ -118,13 +124,14 @@ public class ChatGptApiManager extends BaseApiManager {
         responseFields = System.getProperty("fess.chatgpt.response_fields", "source,filename,url,timestamp,doc_id,content," + AUTHOR_FIELD)
                 .split(",");
         defaultRoleList = Arrays.stream(System.getProperty("fess.chatgpt.default.roles", "Rguest").split(","))
-                .filter(StringUtil::isNotBlank).collect(Collectors.toList());
+                .filter(StringUtil::isNotBlank).toList();
         defaultVirtualHostList = Arrays.stream(System.getProperty("fess.chatgpt.default.virtual_hosts", StringUtil.EMPTY).split(","))
-                .filter(StringUtil::isNotBlank).collect(Collectors.toList());
+                .filter(StringUtil::isNotBlank).toList();
         defaultHost = System.getProperty("fess.chatgpt.default.host", "chatgpt");
         defaultConfigId = System.getProperty("fess.chatgpt.default.config_id", "chatgpt");
 
         ComponentUtil.getWebApiManagerFactory().add(this);
+        pluginAuthenticator = ComponentUtil.getComponent("pluginAuthenticator");
     }
 
     @Override
@@ -133,11 +140,8 @@ public class ChatGptApiManager extends BaseApiManager {
         if (servletPath.startsWith(pathPrefix)) {
             return true;
         }
-        if ("get".equalsIgnoreCase(request.getMethod()) && (AI_PLUGIN_JSON_PATH.equals(servletPath) || LOGO_PNG_PATH.equals(servletPath)
-                || OPENAPI_YAML_PATH.equals(servletPath))) {
-            return true;
-        }
-        return false;
+        return "get".equalsIgnoreCase(request.getMethod())
+                && (AI_PLUGIN_JSON_PATH.equals(servletPath) || LOGO_PNG_PATH.equals(servletPath) || OPENAPI_YAML_PATH.equals(servletPath));
     }
 
     @Override
@@ -159,6 +163,15 @@ public class ChatGptApiManager extends BaseApiManager {
         }
         default:
             break;
+        }
+
+        if (pluginAuthenticator != null) {
+            try {
+                request.setAttribute(CHATGPT_PERMISSION_LIST, pluginAuthenticator.authenticate(request));
+            } catch (final InvalidAccessTokenException e) {
+
+                return;
+            }
         }
 
         final String[] values = servletPath.replaceAll("/+", "/").split("/");
@@ -208,7 +221,7 @@ public class ChatGptApiManager extends BaseApiManager {
             response.setStatus(HttpServletResponse.SC_OK);
             write(buf.toString().replace(LOCALHOST_URL + "/chatgpt", url), "application/x-yaml", Constants.UTF_8);
         } catch (final Exception e) {
-            throwErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
+            writeErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
         }
     }
 
@@ -224,10 +237,13 @@ public class ChatGptApiManager extends BaseApiManager {
             final String openapiYamlUrl = System.getProperty("fess.chatgpt.openapi_yaml.url", LOCALHOST_URL + OPENAPI_YAML_PATH);
             final String logoUrl = System.getProperty("fess.chatgpt.logo.url", LOCALHOST_URL + LOGO_PNG_PATH);
             response.setStatus(HttpServletResponse.SC_OK);
-            write(buf.toString().replace(LOCALHOST_URL + OPENAPI_YAML_PATH, openapiYamlUrl).replace(LOCALHOST_URL + LOGO_PNG_PATH, logoUrl),
+            write(buf.toString()//
+                    .replace(LOCALHOST_URL + OPENAPI_YAML_PATH, openapiYamlUrl)//
+                    .replace(LOCALHOST_URL + LOGO_PNG_PATH, logoUrl)//
+                    .replace("{\"type\":\"none\"}", pluginAuthenticator.getAiPluginJson()), //
                     "application/json", Constants.UTF_8);
         } catch (final Exception e) {
-            throwErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
+            writeErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
         }
     }
 
@@ -236,7 +252,7 @@ public class ChatGptApiManager extends BaseApiManager {
                 OutputStream out = response.getOutputStream()) {
             CopyUtil.copy(in, out);
         } catch (final Exception e) {
-            throwErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
+            writeErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
         }
     }
 
@@ -247,7 +263,7 @@ public class ChatGptApiManager extends BaseApiManager {
         try (DocumentParser parser = new DocumentParser(request.getInputStream())) {
             final Document[] documents = parser.parse();
             final List<Map<String, Object>> docList =
-                    Arrays.stream(documents).map(d -> createDocMap(segment, d, fessConfig)).collect(Collectors.toList());
+                    Arrays.stream(documents).map(d -> createDocMap(request, segment, d, fessConfig)).collect(Collectors.toList());
             final String[] docIds = client.addAll(fessConfig.getIndexDocumentUpdateIndex(), docList, (doc, builder) -> {});
             final StringBuilder buf = new StringBuilder(1000);
             buf.append("{\"ids\":[")
@@ -256,11 +272,12 @@ public class ChatGptApiManager extends BaseApiManager {
             response.setStatus(HttpServletResponse.SC_OK);
             write(buf.toString(), mimeType, Constants.UTF_8);
         } catch (final Exception e) {
-            throwErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
+            writeErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
         }
     }
 
-    protected Map<String, Object> createDocMap(final String segment, final Document document, final FessConfig fessConfig) {
+    protected Map<String, Object> createDocMap(final HttpServletRequest request, final String segment, final Document document,
+            final FessConfig fessConfig) {
         final SystemHelper systemHelper = ComponentUtil.getSystemHelper();
         final Map<String, Object> docMap = new HashMap<>();
         docMap.put(fessConfig.getIndexFieldContent(), document.getText());
@@ -289,8 +306,13 @@ public class ChatGptApiManager extends BaseApiManager {
         docMap.put(fessConfig.getIndexFieldLastModified(), createdAt);
         docMap.put(fessConfig.getIndexFieldCreated(), createdAt);
 
+        final List<String> roleList = new ArrayList<>();
+        if (request.getAttribute(CHATGPT_PERMISSION_LIST) instanceof final List<?> permissionList) {
+            permissionList.stream().map(Object::toString).forEach(roleList::add);
+        }
+        roleList.addAll(defaultRoleList);
+        docMap.put(fessConfig.getIndexFieldRole(), roleList);
         docMap.put(fessConfig.getIndexFieldFiletype(), "txt");
-        docMap.put(fessConfig.getIndexFieldRole(), defaultRoleList);
         docMap.put(fessConfig.getIndexFieldClickCount(), 0);
         docMap.put(fessConfig.getIndexFieldTitle(), StringUtil.EMPTY);
         docMap.put(fessConfig.getIndexFieldSegment(), segment);
@@ -329,35 +351,30 @@ public class ChatGptApiManager extends BaseApiManager {
             buf.append("]}");
             response.setStatus(HttpServletResponse.SC_OK);
             write(buf.toString(), mimeType, Constants.UTF_8);
+        } catch (final InvalidQueryException | ResultOffsetExceededException e) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Failed to process a search request.", e);
+            }
+            writeErrorResponse(HttpServletResponse.SC_BAD_REQUEST, "Cannot understande your query.", e);
         } catch (final Exception e) {
-            throwErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
+            if (logger.isDebugEnabled()) {
+                logger.debug("Failed to process a search request.", e);
+            }
+            writeErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
         }
     }
 
     protected String processQuery(final HttpServletRequest request, final HttpServletResponse response, final Query query,
             final FessConfig fessConfig) {
         final SearchHelper searchHelper = ComponentUtil.getSearchHelper();
-        try {
-            final SearchRenderData data = new SearchRenderData();
-            final QueryRequestParams params = new QueryRequestParams(request, fessConfig, query, responseFields);
-            searchHelper.search(params, data, OptionalThing.empty());
-            final QueryResult queryResult = QueryResult.create(query, data);
-            return queryResult.toJsonString();
-        } catch (final InvalidQueryException | ResultOffsetExceededException e) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Failed to process a search request.", e);
-            }
-            throwErrorResponse(HttpServletResponse.SC_BAD_REQUEST, "Cannot understande your query.", e);
-        } catch (final Exception e) {
-            if (logger.isDebugEnabled()) {
-                logger.debug("Failed to process a search request.", e);
-            }
-            throwErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
-        }
-        return StringUtil.EMPTY;
+        final SearchRenderData data = new SearchRenderData();
+        final QueryRequestParams params = new QueryRequestParams(request, fessConfig, query, responseFields);
+        searchHelper.search(params, data, OptionalThing.empty());
+        final QueryResult queryResult = QueryResult.create(query, data);
+        return queryResult.toJsonString();
     }
 
-    protected void throwErrorResponse(final int status, final String message, final Throwable t) {
+    protected void writeErrorResponse(final int status, final String message, final Throwable t) {
         final Supplier<String> stacktraceString = () -> {
             final StringBuilder buf = new StringBuilder(100);
             if (StringUtil.isBlank(t.getMessage())) {

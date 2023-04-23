@@ -2,6 +2,9 @@
 <!DOCTYPE components PUBLIC "-//DBFLUTE//DTD LastaDi 1.0//EN"
 	"http://dbflute.org/meta/lastadi10.dtd">
 <components>
-	<component name="chatGptApiManager" class="org.codelibs.fess.plugin.webapp.api.chatgpt.ChatGptApiManager">
+	<component name="chatGptApiManager"
+		class="org.codelibs.fess.plugin.webapp.api.chatgpt.ChatGptApiManager">
 	</component>
+	<component name="pluginAuthenticator"
+		class="org.codelibs.fess.plugin.webapp.api.chatgpt.auth.PluginAuthenticator"></component>
 </components>

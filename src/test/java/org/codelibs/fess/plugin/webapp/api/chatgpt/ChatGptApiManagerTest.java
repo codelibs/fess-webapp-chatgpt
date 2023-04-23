@@ -17,6 +17,7 @@ package org.codelibs.fess.plugin.webapp.api.chatgpt;
 
 import org.codelibs.fess.api.WebApiManagerFactory;
 import org.codelibs.fess.mylasta.direction.FessConfig;
+import org.codelibs.fess.plugin.webapp.api.chatgpt.auth.PluginAuthenticator;
 import org.codelibs.fess.util.ComponentUtil;
 import org.dbflute.utflute.lastaflute.LastaFluteTestCase;
 
@@ -41,6 +42,8 @@ public class ChatGptApiManagerTest extends LastaFluteTestCase {
         });
         webApiManagerFactory = new WebApiManagerFactory();
         ComponentUtil.register(webApiManagerFactory, "webApiManagerFactory");
+        PluginAuthenticator pluginAuthenticator = new PluginAuthenticator();
+        ComponentUtil.register(pluginAuthenticator, "pluginAuthenticator");
         super.setUp();
     }
 

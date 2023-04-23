@@ -19,6 +19,7 @@ import java.io.ByteArrayInputStream;
 
 import org.codelibs.fess.api.WebApiManagerFactory;
 import org.codelibs.fess.mylasta.direction.FessConfig;
+import org.codelibs.fess.plugin.webapp.api.chatgpt.auth.PluginAuthenticator;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.entity.Query;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.entity.Source;
 import org.codelibs.fess.util.ComponentUtil;
@@ -45,6 +46,8 @@ public class QueryParserTest extends LastaFluteTestCase {
         });
         webApiManagerFactory = new WebApiManagerFactory();
         ComponentUtil.register(webApiManagerFactory, "webApiManagerFactory");
+        PluginAuthenticator pluginAuthenticator = new PluginAuthenticator();
+        ComponentUtil.register(pluginAuthenticator, "pluginAuthenticator");
         super.setUp();
     }
 
