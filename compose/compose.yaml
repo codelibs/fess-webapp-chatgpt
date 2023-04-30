@@ -1,0 +1,63 @@
+services:
+  fess01:
+    image: ghcr.io/codelibs/fess:snapshot
+    container_name: fess01
+    environment:
+      - "SEARCH_ENGINE_HTTP_URL=http://search01:9200"
+      - "FESS_DICTIONARY_PATH=${FESS_DICTIONARY_PATH:-/usr/share/opensearch/config/dictionary/}"
+      - "FESS_PLUGINS=fess-webapp-semantic-search:14.7.1-SNAPSHOT fess-webapp-chatgpt:14.8.0-SNAPSHOT"
+    ports:
+      - "8080:8080"
+    networks:
+      - fess_net
+    depends_on:
+      - search01
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+  search01:
+    image: ghcr.io/codelibs/fess-opensearch:2.6.0
+    container_name: search01
+    environment:
+      - node.name=search01
+      - discovery.seed_hosts=search01
+      - cluster.initial_cluster_manager_nodes=search01
+      - cluster.name=fess-es
+      - bootstrap.memory_lock=true
+      - node.roles=cluster_manager,data,ingest,ml
+      - plugins.security.disabled=true
+      - "OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g"
+      - "FESS_DICTIONARY_PATH=/usr/share/opensearch/config/dictionary"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65535
+        hard: 65535
+    volumes:
+      - searchdata01:/usr/share/opensearch/data
+      - searchdictionary01:/usr/share/opensearch/config/dictionary
+    ports:
+      - 9200:9200
+    networks:
+      - fess_net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+    restart: unless-stopped
+
+volumes:
+  searchdata01:
+    driver: local
+  searchdictionary01:
+    driver: local
+
+networks:
+  fess_net:
+    driver: bridge
