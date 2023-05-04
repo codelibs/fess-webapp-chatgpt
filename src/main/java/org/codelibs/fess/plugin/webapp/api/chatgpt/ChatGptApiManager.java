@@ -263,7 +263,7 @@ public class ChatGptApiManager extends BaseApiManager {
         try (DocumentParser parser = new DocumentParser(request.getInputStream())) {
             final Document[] documents = parser.parse();
             final List<Map<String, Object>> docList =
-                    Arrays.stream(documents).map(d -> createDocMap(request, segment, d, fessConfig)).collect(Collectors.toList());
+                    Arrays.stream(documents).map(d -> createDocMap(request, segment, d, fessConfig)).toList();
             final String[] docIds = client.addAll(fessConfig.getIndexDocumentUpdateIndex(), docList, (doc, builder) -> {});
             final StringBuilder buf = new StringBuilder(1000);
             buf.append("{\"ids\":[")

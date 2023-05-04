@@ -24,8 +24,8 @@ import org.codelibs.core.exception.IORuntimeException;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.entity.Document;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.entity.Document.DocumentBuilder;
 import org.opensearch.common.xcontent.LoggingDeprecationHandler;
-import org.opensearch.common.xcontent.NamedXContentRegistry;
 import org.opensearch.common.xcontent.json.JsonXContent;
+import org.opensearch.core.xcontent.NamedXContentRegistry;
 
 public class DocumentParser implements AutoCloseable {
     private final InputStream in;

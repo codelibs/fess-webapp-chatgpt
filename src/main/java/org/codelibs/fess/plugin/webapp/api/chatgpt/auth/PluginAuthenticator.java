@@ -18,7 +18,6 @@ package org.codelibs.fess.plugin.webapp.api.chatgpt.auth;
 import static org.codelibs.core.stream.StreamUtil.stream;
 
 import java.util.List;
-import java.util.stream.Collectors;
 
 import javax.servlet.http.HttpServletRequest;
 
@@ -57,8 +56,7 @@ public class PluginAuthenticator {
                     && expiredTime.longValue() < ComponentUtil.getSystemHelper().getCurrentTimeAsLong()) {
                 throw new InvalidAccessTokenException("expired_token", "The token is expired.");
             }
-            final List<String> permissionList =
-                    stream(accessToken.getPermissions()).get(stream -> stream.distinct().collect(Collectors.toList()));
+            final List<String> permissionList = stream(accessToken.getPermissions()).get(stream -> stream.distinct().toList());
             if (permissionList.isEmpty()) {
                 throw new InvalidAccessTokenException("no_permissions", "Your token does not contain permissions for this system.");
             }
