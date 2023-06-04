@@ -100,6 +100,14 @@ public class ChatGptApiManager extends BaseApiManager {
 
     protected static final String FESS_CHATGPT_RESPONSE_FIELDS = "fess.chatgpt.response_fields";
 
+    protected static final String FESS_CHATGPT_AI_PLUGIN_DESCRIPTION_FOR_HUMAN = "fess.chatgpt.ai_plugin.description_for_human";
+
+    protected static final String FESS_CHATGPT_AI_PLUGIN_DESCRIPTION_FOR_MODEL = "fess.chatgpt.ai_plugin.description_for_model";
+
+    protected static final String FESS_CHATGPT_AI_PLUGIN_NAME_FOR_HUMAN = "fess.chatgpt.ai_plugin.name_for_human";
+
+    protected static final String FESS_CHATGPT_AI_PLUGIN_NAME_FOR_MODEL = "fess.chatgpt.ai_plugin.name_for_model";
+
     protected static final String CHATGPT_PERMISSION_LIST = "chatgpt.permissionList";
 
     protected static final String LOCALHOST_URL = "http://localhost:8080";
@@ -253,17 +261,39 @@ public class ChatGptApiManager extends BaseApiManager {
                 buf.append(line).append('\n');
             }
 
-            final String openapiYamlUrl = System.getProperty(FESS_CHATGPT_OPENAPI_YAML_URL, LOCALHOST_URL + OPENAPI_YAML_PATH);
-            final String logoUrl = System.getProperty(FESS_CHATGPT_LOGO_URL, LOCALHOST_URL + LOGO_PNG_PATH);
             response.setStatus(HttpServletResponse.SC_OK);
-            write(buf.toString()//
-                    .replace(LOCALHOST_URL + OPENAPI_YAML_PATH, openapiYamlUrl)//
-                    .replace(LOCALHOST_URL + LOGO_PNG_PATH, logoUrl)//
-                    .replace("{\"type\":\"none\"}", pluginAuthenticator.getAiPluginJson()), //
-                    "application/json", Constants.UTF_8);
+            write(updateAiPluginContent(buf), "application/json", Constants.UTF_8);
         } catch (final Exception e) {
             writeErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Cannot process your request.", e);
         }
+    }
+
+    protected String updateAiPluginContent(final StringBuilder contentBuf) {
+        final String openapiYamlUrl = System.getProperty(FESS_CHATGPT_OPENAPI_YAML_URL, LOCALHOST_URL + OPENAPI_YAML_PATH);
+        final String logoUrl = System.getProperty(FESS_CHATGPT_LOGO_URL, LOCALHOST_URL + LOGO_PNG_PATH);
+        String content = contentBuf.toString()//
+                .replace(LOCALHOST_URL + OPENAPI_YAML_PATH, openapiYamlUrl)//
+                .replace(LOCALHOST_URL + LOGO_PNG_PATH, logoUrl)//
+                .replace("{\"type\":\"none\"}", pluginAuthenticator.getAiPluginJson());
+        final String nameForModel = System.getProperty(FESS_CHATGPT_AI_PLUGIN_NAME_FOR_MODEL);
+        if (nameForModel != null) {
+            content = content.replace("\"name_for_model\": \"retrieval\"", "\"name_for_model\": \"" + nameForModel + "\"");
+        }
+        final String nameForHuman = System.getProperty(FESS_CHATGPT_AI_PLUGIN_NAME_FOR_HUMAN);
+        if (nameForHuman != null) {
+            content = content.replace("\"name_for_human\": \"Fess Plugin\"", "\"name_for_human\": \"" + nameForHuman + "\"");
+        }
+        final String descriptionForModel = System.getProperty(FESS_CHATGPT_AI_PLUGIN_DESCRIPTION_FOR_MODEL);
+        if (descriptionForModel != null) {
+            content =
+                    content.replaceFirst("\"description_for_model\": \".*\"", "\"description_for_model\": \"" + descriptionForModel + "\"");
+        }
+        final String descriptionForHuman = System.getProperty(FESS_CHATGPT_AI_PLUGIN_DESCRIPTION_FOR_HUMAN);
+        if (descriptionForHuman != null) {
+            content =
+                    content.replaceFirst("\"description_for_human\": \".*\"", "\"description_for_human\": \"" + descriptionForHuman + "\"");
+        }
+        return content;
     }
 
     protected void processLogoPng(final HttpServletResponse response) {

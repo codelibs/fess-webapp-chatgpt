@@ -15,6 +15,12 @@
  */
 package org.codelibs.fess.plugin.webapp.api.chatgpt;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+
+import org.codelibs.core.io.ResourceUtil;
+import org.codelibs.fess.Constants;
 import org.codelibs.fess.api.WebApiManagerFactory;
 import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.auth.PluginAuthenticator;
@@ -54,7 +60,65 @@ public class ChatGptApiManagerTest extends LastaFluteTestCase {
     }
 
     public void test_pathPrefix() {
-        ChatGptApiManager chatGptApiManager = getComponent("chatGptApiManager");
+        final ChatGptApiManager chatGptApiManager = getComponent("chatGptApiManager");
         assertEquals("/chatgpt", chatGptApiManager.getPathPrefix());
+    }
+
+    public void test_updateAiPluginContent() throws IOException {
+        final StringBuilder buf = new StringBuilder(8000);
+        final ChatGptApiManager chatGptApiManager = getComponent("chatGptApiManager");
+        try (final BufferedReader br = new BufferedReader(
+                new InputStreamReader(ResourceUtil.getResourceAsStream("chatgpt/ai-plugin.json"), Constants.CHARSET_UTF_8))) {
+            String line;
+            while ((line = br.readLine()) != null) {
+                buf.append(line).append('\n');
+            }
+
+            assertEquals(
+                    """
+                            {
+                                "schema_version": "v1",
+                                "name_for_model": "retrieval",
+                                "name_for_human": "Fess Plugin",
+                                "description_for_model": "Plugin for searching through the user's documents (such as files, emails, and more) to find answers to questions and retrieve relevant information. Use it whenever a user asks something that might be found in their personal information, or asks you to save information for later.",
+                                "description_for_human": "Search through your documents.",
+                                "auth": {"type":"none"},
+                                "api": {
+                                    "type": "openapi",
+                                    "url": "http://localhost:8080/.well-known/openapi.yaml",
+                                    "has_user_authentication": false
+                                },
+                                "logo_url": "http://localhost:8080/.well-known/logo.png",
+                                "contact_email": "info@codelibs.co",
+                                "legal_info_url": "https://codelibs.co/"
+                            }
+                            """,
+                    chatGptApiManager.updateAiPluginContent(buf).replace("\t", "    "));
+
+            System.setProperty(ChatGptApiManager.FESS_CHATGPT_OPENAPI_YAML_URL, "yaml_url");
+            System.setProperty(ChatGptApiManager.FESS_CHATGPT_LOGO_URL, "logo_url");
+            System.setProperty(ChatGptApiManager.FESS_CHATGPT_AI_PLUGIN_DESCRIPTION_FOR_HUMAN, "desc for human");
+            System.setProperty(ChatGptApiManager.FESS_CHATGPT_AI_PLUGIN_DESCRIPTION_FOR_MODEL, "desc for model");
+            System.setProperty(ChatGptApiManager.FESS_CHATGPT_AI_PLUGIN_NAME_FOR_HUMAN, "name for human");
+            System.setProperty(ChatGptApiManager.FESS_CHATGPT_AI_PLUGIN_NAME_FOR_MODEL, "name for model");
+            assertEquals("""
+                    {
+                        "schema_version": "v1",
+                        "name_for_model": "name for model",
+                        "name_for_human": "name for human",
+                        "description_for_model": "desc for model",
+                        "description_for_human": "desc for human",
+                        "auth": {"type":"none"},
+                        "api": {
+                            "type": "openapi",
+                            "url": "yaml_url",
+                            "has_user_authentication": false
+                        },
+                        "logo_url": "logo_url",
+                        "contact_email": "info@codelibs.co",
+                        "legal_info_url": "https://codelibs.co/"
+                    }
+                    """, chatGptApiManager.updateAiPluginContent(buf).replace("\t", "    "));
+        }
     }
 }
