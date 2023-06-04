@@ -82,6 +82,24 @@ public class ChatGptApiManager extends BaseApiManager {
 
     private static final Logger logger = LogManager.getLogger(ChatGptApiManager.class);
 
+    protected static final String FESS_CHATGPT_LOGO_URL = "fess.chatgpt.logo.url";
+
+    protected static final String FESS_CHATGPT_OPENAPI_YAML_URL = "fess.chatgpt.openapi_yaml.url";
+
+    protected static final String FESS_CHATGPT_OPENAPI_URL = "fess.chatgpt.openapi.url";
+
+    protected static final String FESS_CHATGPT_DEFAULT_CONFIG_ID = "fess.chatgpt.default.config_id";
+
+    protected static final String FESS_CHATGPT_DEFAULT_HOST = "fess.chatgpt.default.host";
+
+    protected static final String FESS_CHATGPT_DEFAULT_VIRTUAL_HOSTS = "fess.chatgpt.default.virtual_hosts";
+
+    protected static final String FESS_CHATGPT_DEFAULT_ROLES = "fess.chatgpt.default.roles";
+
+    protected static final String FESS_CHATGPT_BASE_URL = "fess.chatgpt.base_url";
+
+    protected static final String FESS_CHATGPT_RESPONSE_FIELDS = "fess.chatgpt.response_fields";
+
     protected static final String CHATGPT_PERMISSION_LIST = "chatgpt.permissionList";
 
     protected static final String LOCALHOST_URL = "http://localhost:8080";
@@ -96,18 +114,6 @@ public class ChatGptApiManager extends BaseApiManager {
 
     protected String mimeType = "application/json";
 
-    protected String[] responseFields;
-
-    protected String baseUrl;
-
-    protected List<String> defaultRoleList;
-
-    protected List<String> defaultVirtualHostList;
-
-    protected String defaultHost;
-
-    protected String defaultConfigId;
-
     protected PluginAuthenticator pluginAuthenticator;
 
     public ChatGptApiManager() {
@@ -120,18 +126,33 @@ public class ChatGptApiManager extends BaseApiManager {
             logger.info("Load {}", this.getClass().getSimpleName());
         }
 
-        baseUrl = System.getProperty("fess.chatgpt.base_url", "https://github.com/codelibs/fess-webapp-chatgpt");
-        responseFields = System.getProperty("fess.chatgpt.response_fields", "source,filename,url,timestamp,doc_id,content," + AUTHOR_FIELD)
-                .split(",");
-        defaultRoleList = Arrays.stream(System.getProperty("fess.chatgpt.default.roles", "Rguest").split(","))
-                .filter(StringUtil::isNotBlank).toList();
-        defaultVirtualHostList = Arrays.stream(System.getProperty("fess.chatgpt.default.virtual_hosts", StringUtil.EMPTY).split(","))
-                .filter(StringUtil::isNotBlank).toList();
-        defaultHost = System.getProperty("fess.chatgpt.default.host", "chatgpt");
-        defaultConfigId = System.getProperty("fess.chatgpt.default.config_id", "chatgpt");
-
         ComponentUtil.getWebApiManagerFactory().add(this);
         pluginAuthenticator = ComponentUtil.getComponent("pluginAuthenticator");
+    }
+
+    protected String[] getResponseFields() {
+        return System.getProperty(FESS_CHATGPT_RESPONSE_FIELDS, "source,filename,url,timestamp,doc_id,content," + AUTHOR_FIELD).split(",");
+    }
+
+    protected String getBaseUrl() {
+        return System.getProperty(FESS_CHATGPT_BASE_URL, "https://github.com/codelibs/fess-webapp-chatgpt");
+    }
+
+    protected List<String> getDefaultRoleList() {
+        return Arrays.stream(System.getProperty(FESS_CHATGPT_DEFAULT_ROLES, "Rguest").split(",")).filter(StringUtil::isNotBlank).toList();
+    }
+
+    protected List<String> getDefaultVirtualHostList() {
+        return Arrays.stream(System.getProperty(FESS_CHATGPT_DEFAULT_VIRTUAL_HOSTS, StringUtil.EMPTY).split(","))
+                .filter(StringUtil::isNotBlank).toList();
+    }
+
+    protected String getDefaultHost() {
+        return System.getProperty(FESS_CHATGPT_DEFAULT_HOST, "chatgpt");
+    }
+
+    protected String getDefaultConfigId() {
+        return System.getProperty(FESS_CHATGPT_DEFAULT_CONFIG_ID, "chatgpt");
     }
 
     @Override
@@ -147,7 +168,6 @@ public class ChatGptApiManager extends BaseApiManager {
     @Override
     public void process(final HttpServletRequest request, final HttpServletResponse response, final FilterChain chain)
             throws IOException, ServletException {
-        processResponseHeader(response);
         final String servletPath = request.getServletPath();
         switch (servletPath) {
         case AI_PLUGIN_JSON_PATH: {
@@ -207,16 +227,6 @@ public class ChatGptApiManager extends BaseApiManager {
         writeErrorResponse(HttpServletResponse.SC_NOT_FOUND, "Cannot understand your request.", StringUtil.EMPTY_STRINGS);
     }
 
-    protected void processResponseHeader(final HttpServletResponse response) {
-        if (!pluginAuthenticator.isAuthenticated()) {
-            // local mode
-            response.addHeader("Access-Control-Allow-Origin", "https://chat.openai.com");
-            response.addHeader("Access-Control-Allow-Credentials", "true");
-            response.addHeader("Access-Control-Allow-Private-Network", "true");
-            response.addHeader("Access-Control-Allow-Headers", "*");
-        }
-    }
-
     protected void processOpenApiYaml(final HttpServletResponse response) {
         final StringBuilder buf = new StringBuilder(8000);
         try (final BufferedReader br = new BufferedReader(
@@ -226,7 +236,7 @@ public class ChatGptApiManager extends BaseApiManager {
                 buf.append(line).append('\n');
             }
 
-            final String url = System.getProperty("fess.chatgpt.openapi.url", LOCALHOST_URL + "/chatgpt");
+            final String url = System.getProperty(FESS_CHATGPT_OPENAPI_URL, LOCALHOST_URL + "/chatgpt");
             response.setStatus(HttpServletResponse.SC_OK);
             write(buf.toString().replace(LOCALHOST_URL + "/chatgpt", url), "application/x-yaml", Constants.UTF_8);
         } catch (final Exception e) {
@@ -243,8 +253,8 @@ public class ChatGptApiManager extends BaseApiManager {
                 buf.append(line).append('\n');
             }
 
-            final String openapiYamlUrl = System.getProperty("fess.chatgpt.openapi_yaml.url", LOCALHOST_URL + OPENAPI_YAML_PATH);
-            final String logoUrl = System.getProperty("fess.chatgpt.logo.url", LOCALHOST_URL + LOGO_PNG_PATH);
+            final String openapiYamlUrl = System.getProperty(FESS_CHATGPT_OPENAPI_YAML_URL, LOCALHOST_URL + OPENAPI_YAML_PATH);
+            final String logoUrl = System.getProperty(FESS_CHATGPT_LOGO_URL, LOCALHOST_URL + LOGO_PNG_PATH);
             response.setStatus(HttpServletResponse.SC_OK);
             write(buf.toString()//
                     .replace(LOCALHOST_URL + OPENAPI_YAML_PATH, openapiYamlUrl)//
@@ -303,7 +313,7 @@ public class ChatGptApiManager extends BaseApiManager {
             docMap.put(fessConfig.getIndexFieldUrl(), metadata.getUrl());
         } else {
             final String digest = MessageDigestUtil.digest(ComponentUtil.getFessConfig().getIndexIdDigestAlgorithm(), document.getText());
-            docMap.put(fessConfig.getIndexFieldUrl(), baseUrl + "?" + digest);
+            docMap.put(fessConfig.getIndexFieldUrl(), getBaseUrl() + "?" + digest);
         }
         if (StringUtil.isNotBlank(metadata.getAuthor())) {
             docMap.put(AUTHOR_FIELD, metadata.getAuthor());
@@ -319,18 +329,18 @@ public class ChatGptApiManager extends BaseApiManager {
         if (request.getAttribute(CHATGPT_PERMISSION_LIST) instanceof final List<?> permissionList) {
             permissionList.stream().map(Object::toString).forEach(roleList::add);
         }
-        roleList.addAll(defaultRoleList);
+        roleList.addAll(getDefaultRoleList());
         docMap.put(fessConfig.getIndexFieldRole(), roleList);
         docMap.put(fessConfig.getIndexFieldFiletype(), "txt");
         docMap.put(fessConfig.getIndexFieldClickCount(), 0);
         docMap.put(fessConfig.getIndexFieldTitle(), StringUtil.EMPTY);
         docMap.put(fessConfig.getIndexFieldSegment(), segment);
         docMap.put(fessConfig.getIndexFieldDigest(), StringUtil.EMPTY);
-        docMap.put(fessConfig.getIndexFieldHost(), defaultHost);
+        docMap.put(fessConfig.getIndexFieldHost(), getDefaultHost());
         docMap.put(fessConfig.getIndexFieldFavoriteCount(), 0);
         docMap.put(fessConfig.getIndexFieldContentLength(), document.getText().length());
-        docMap.put(fessConfig.getIndexFieldVirtualHost(), defaultVirtualHostList);
-        docMap.put(fessConfig.getIndexFieldConfigId(), defaultConfigId);
+        docMap.put(fessConfig.getIndexFieldVirtualHost(), getDefaultVirtualHostList());
+        docMap.put(fessConfig.getIndexFieldConfigId(), getDefaultConfigId());
         docMap.put(fessConfig.getIndexFieldParentId(), StringUtil.EMPTY);
         docMap.put(fessConfig.getIndexFieldAnchor(), StringUtil.EMPTY_STRINGS);
         docMap.put(fessConfig.getIndexFieldBoost(), 1.0f);
@@ -377,7 +387,7 @@ public class ChatGptApiManager extends BaseApiManager {
             final FessConfig fessConfig) {
         final SearchHelper searchHelper = ComponentUtil.getSearchHelper();
         final SearchRenderData data = new SearchRenderData();
-        final QueryRequestParams params = new QueryRequestParams(request, fessConfig, query, responseFields);
+        final QueryRequestParams params = new QueryRequestParams(request, fessConfig, query, getResponseFields());
         searchHelper.search(params, data, OptionalThing.empty());
         final QueryResult queryResult = QueryResult.create(query, data);
         return queryResult.toJsonString();

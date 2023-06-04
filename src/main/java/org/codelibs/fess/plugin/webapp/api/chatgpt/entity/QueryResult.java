@@ -21,6 +21,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.text.StringEscapeUtils;
 import org.apache.poi.util.StringUtil;
 import org.codelibs.fess.Constants;
@@ -117,6 +118,7 @@ public class QueryResult {
     }
 
     public static QueryResult create(final Query query, final SearchRenderData data) {
+        final int maxTextLength = Integer.parseInt(System.getProperty("fess.chatgpt.doc.max_length", "1000"));
         final FessConfig fessConfig = ComponentUtil.getFessConfig();
         final List<Map<String, Object>> documentItems = data.getDocumentItems();
         final float maxScore = getMaxScore(documentItems);
@@ -160,7 +162,11 @@ public class QueryResult {
 
             final DocumentResult document = new DocumentResult(e.get(fessConfig.getIndexFieldId()).toString(), metadata);
             if (e.get(fessConfig.getIndexFieldContent()) instanceof final String text) {
-                document.text = text;
+                if (text.length() > maxTextLength) {
+                    document.text = StringUtils.abbreviate(text, maxTextLength);
+                } else {
+                    document.text = text;
+                }
             }
             if (e.get(Constants.SCORE) instanceof final Number score) {
                 document.score = score.floatValue() / maxScore;
