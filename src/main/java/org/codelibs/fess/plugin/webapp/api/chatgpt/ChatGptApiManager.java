@@ -147,6 +147,7 @@ public class ChatGptApiManager extends BaseApiManager {
     @Override
     public void process(final HttpServletRequest request, final HttpServletResponse response, final FilterChain chain)
             throws IOException, ServletException {
+        processResponseHeader(response);
         final String servletPath = request.getServletPath();
         switch (servletPath) {
         case AI_PLUGIN_JSON_PATH: {
@@ -165,17 +166,10 @@ public class ChatGptApiManager extends BaseApiManager {
             break;
         }
 
-        if (pluginAuthenticator != null) {
-            try {
-                request.setAttribute(CHATGPT_PERMISSION_LIST, pluginAuthenticator.authenticate(request));
-            } catch (final InvalidAccessTokenException e) {
-
-                return;
-            }
-        }
-
         final String[] values = servletPath.replaceAll("/+", "/").split("/");
         try {
+            request.setAttribute(CHATGPT_PERMISSION_LIST, pluginAuthenticator.authenticate(request));
+
             if (values.length > 2) {
                 switch (values[2]) {
                 case "upsert-file": {
@@ -203,9 +197,24 @@ public class ChatGptApiManager extends BaseApiManager {
         } catch (final FessChatGptResponseException e) {
             writeErrorResponse(e.getStatus(), e.getMessage(), e.getLocations());
             return;
+        } catch (final Exception e) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Failed to process {}", servletPath, e);
+            }
+            writeErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage(), e);
         }
 
         writeErrorResponse(HttpServletResponse.SC_NOT_FOUND, "Cannot understand your request.", StringUtil.EMPTY_STRINGS);
+    }
+
+    protected void processResponseHeader(final HttpServletResponse response) {
+        if (!pluginAuthenticator.isAuthenticated()) {
+            // local mode
+            response.addHeader("Access-Control-Allow-Origin", "https://chat.openai.com");
+            response.addHeader("Access-Control-Allow-Credentials", "true");
+            response.addHeader("Access-Control-Allow-Private-Network", "true");
+            response.addHeader("Access-Control-Allow-Headers", "*");
+        }
     }
 
     protected void processOpenApiYaml(final HttpServletResponse response) {
@@ -248,7 +257,7 @@ public class ChatGptApiManager extends BaseApiManager {
     }
 
     protected void processLogoPng(final HttpServletResponse response) {
-        try (InputStream in = new BufferedInputStream(ResourceUtil.getResourceAsStream("/chatgpt/ai-plugin.json"));
+        try (InputStream in = new BufferedInputStream(ResourceUtil.getResourceAsStream("/chatgpt/logo.png"));
                 OutputStream out = response.getOutputStream()) {
             CopyUtil.copy(in, out);
         } catch (final Exception e) {
@@ -408,14 +417,6 @@ public class ChatGptApiManager extends BaseApiManager {
         } else {
             writeErrorResponse(status, message, locations);
         }
-    }
-
-    protected void throwErrorResponse(final int status, final String message) {
-        throwErrorResponse(status, message, StringUtil.EMPTY_STRINGS);
-    }
-
-    protected void throwErrorResponse(final int status, final String message, final String[] locations) {
-        throw new FessChatGptResponseException(status, message, locations);
     }
 
     protected void writeErrorResponse(final int status, final String message, final String[] locations) {
