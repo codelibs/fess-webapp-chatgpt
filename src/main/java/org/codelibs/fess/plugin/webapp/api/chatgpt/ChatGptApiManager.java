@@ -550,6 +550,11 @@ public class ChatGptApiManager extends BaseApiManager {
         }
 
         @Override
+        public int getOffset() {
+            return 0;
+        }
+
+        @Override
         public int getPageSize() {
             return query.getTopK();
         }
