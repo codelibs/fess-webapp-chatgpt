@@ -222,6 +222,9 @@ public class ChatGptApiManager extends BaseApiManager {
                     break;
                 }
             }
+        } catch (final InvalidAccessTokenException e) {
+            writeErrorResponse(HttpServletResponse.SC_UNAUTHORIZED, e.getMessage(), e);
+            return;
         } catch (final FessChatGptResponseException e) {
             writeErrorResponse(e.getStatus(), e.getMessage(), e.getLocations());
             return;
@@ -230,6 +233,7 @@ public class ChatGptApiManager extends BaseApiManager {
                 logger.debug("Failed to process {}", servletPath, e);
             }
             writeErrorResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, e.getMessage(), e);
+            return;
         }
 
         writeErrorResponse(HttpServletResponse.SC_NOT_FOUND, "Cannot understand your request.", StringUtil.EMPTY_STRINGS);
@@ -404,7 +408,12 @@ public class ChatGptApiManager extends BaseApiManager {
             if (logger.isDebugEnabled()) {
                 logger.debug("Failed to process a search request.", e);
             }
-            writeErrorResponse(HttpServletResponse.SC_BAD_REQUEST, "Cannot understande your query.", e);
+            writeErrorResponse(HttpServletResponse.SC_BAD_REQUEST, "Cannot understand your query.", e);
+        } catch (final InvalidAccessTokenException e) {
+            if (logger.isDebugEnabled()) {
+                logger.debug("Invalid access token.", e);
+            }
+            writeErrorResponse(HttpServletResponse.SC_UNAUTHORIZED, e.getMessage(), e);
         } catch (final Exception e) {
             if (logger.isDebugEnabled()) {
                 logger.debug("Failed to process a search request.", e);
