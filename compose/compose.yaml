@@ -1,11 +1,11 @@
 services:
   fess01:
-    image: ghcr.io/codelibs/fess:snapshot
+    image: ghcr.io/codelibs/fess:14.11.1
     container_name: fess01
     environment:
       - "SEARCH_ENGINE_HTTP_URL=http://search01:9200"
       - "FESS_DICTIONARY_PATH=${FESS_DICTIONARY_PATH:-/usr/share/opensearch/config/dictionary/}"
-      - "FESS_PLUGINS=fess-webapp-semantic-search:14.7.1-SNAPSHOT fess-webapp-chatgpt:14.8.0-SNAPSHOT"
+      - "FESS_PLUGINS=fess-webapp-chatgpt:14.11.0"
     ports:
       - "8080:8080"
     networks:
@@ -19,7 +19,7 @@ services:
         max-file: "5"
     restart: unless-stopped
   search01:
-    image: ghcr.io/codelibs/fess-opensearch:2.6.0
+    image: ghcr.io/codelibs/fess-opensearch:2.11.1
     container_name: search01
     environment:
       - node.name=search01
