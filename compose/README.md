@@ -14,3 +14,8 @@ docker compose up -d
 ```
 docker compose down
 ```
+
+## Examples
+
+- [RAG with Fess](rag-with-fess.ipynb)
+
