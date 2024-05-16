@@ -118,7 +118,7 @@ public class QueryResult {
     }
 
     public static QueryResult create(final Query query, final SearchRenderData data) {
-        final int maxTextLength = Integer.parseInt(System.getProperty("fess.chatgpt.doc.max_length", "1000"));
+        final int maxTextLength = Integer.parseInt(System.getProperty("fess.chatgpt.doc.max_length", "5000"));
         final FessConfig fessConfig = ComponentUtil.getFessConfig();
         final List<Map<String, Object>> documentItems = data.getDocumentItems();
         final float maxScore = getMaxScore(documentItems);
