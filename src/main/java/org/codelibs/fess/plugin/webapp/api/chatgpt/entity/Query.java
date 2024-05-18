@@ -15,15 +15,20 @@
  */
 package org.codelibs.fess.plugin.webapp.api.chatgpt.entity;
 
+import org.apache.lucene.queryparser.classic.QueryParser.Operator;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.util.DateUtil;
 
 public class Query {
+
+    public static final String QUERY = "chatgpt.QUERY";
 
     protected final String query;
 
     protected final Filter filter;
 
     protected int topK = 3;
+
+    protected Operator operator;
 
     protected Query(final String query) {
         this.query = query;
@@ -40,6 +45,10 @@ public class Query {
 
     public int getTopK() {
         return topK;
+    }
+
+    public Operator getOperator() {
+        return operator;
     }
 
     public static class Filter {
@@ -73,6 +82,12 @@ public class Query {
         public String getEndDate() {
             return DateUtil.format(endDate);
         }
+
+        @Override
+        public String toString() {
+            return "Filter [documentId=" + documentId + ", source=" + source + ", sourceId=" + sourceId + ", author=" + author
+                    + ", startDate=" + startDate + ", endDate=" + endDate + "]";
+        }
     }
 
     public static class QueryBuilder {
@@ -88,6 +103,15 @@ public class Query {
 
         public QueryBuilder topK(final int topK) {
             query.topK = topK;
+            return this;
+        }
+
+        public QueryBuilder operator(final String operator) {
+            if (Operator.AND.name().equalsIgnoreCase(operator)) {
+                query.operator = Operator.AND;
+            } else if (Operator.OR.name().equalsIgnoreCase(operator)) {
+                query.operator = Operator.OR;
+            }
             return this;
         }
 
@@ -128,4 +152,8 @@ public class Query {
         }
     }
 
+    @Override
+    public String toString() {
+        return "Query [query=" + query + ", filter=" + filter + ", topK=" + topK + ", operator=" + operator + "]";
+    }
 }

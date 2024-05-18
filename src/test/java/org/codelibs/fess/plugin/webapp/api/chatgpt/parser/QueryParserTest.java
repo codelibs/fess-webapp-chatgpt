@@ -17,6 +17,7 @@ package org.codelibs.fess.plugin.webapp.api.chatgpt.parser;
 
 import java.io.ByteArrayInputStream;
 
+import org.apache.lucene.queryparser.classic.QueryParser.Operator;
 import org.codelibs.fess.api.WebApiManagerFactory;
 import org.codelibs.fess.mylasta.direction.FessConfig;
 import org.codelibs.fess.plugin.webapp.api.chatgpt.auth.PluginAuthenticator;
@@ -71,7 +72,8 @@ public class QueryParserTest extends LastaFluteTestCase {
                         "start_date": "2013-05-11T21:23:58.970460+07:00",
                         "end_date": "2013-05-05 12:30:45"
                       },
-                      "top_k": 10
+                      "top_k": 10,
+                      "operator": "OR"
                     }
                   ]
                 }""";
@@ -82,6 +84,7 @@ public class QueryParserTest extends LastaFluteTestCase {
             Query query = queries[0];
             assertEquals("QUERY", query.getQuery());
             assertEquals(10, query.getTopK());
+            assertEquals(Operator.OR, query.getOperator());
             Query.Filter filter = query.getFilter();
             assertEquals("DOCUMENT_ID", filter.getDocumentId());
             assertEquals(Source.EMAIL, filter.getSource());

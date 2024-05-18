@@ -60,6 +60,9 @@ public class QueryParser implements AutoCloseable {
                 if (queryMap.get("top_k") instanceof final Number topK) {
                     builder.topK(topK.intValue());
                 }
+                if (queryMap.get("operator") instanceof final String operator) {
+                    builder.operator(operator);
+                }
                 if (queryMap.get("filter") instanceof final Map<?, ?> filterMap) {
                     if (filterMap.get("document_id") instanceof final String documentId) {
                         builder.documentId(documentId);

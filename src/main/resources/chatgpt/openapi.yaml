@@ -2,7 +2,7 @@ openapi: 3.0.2
 info:
   title: Fess Plugin API
   description: A retrieval API for querying and filtering documents based on natural language queries and metadata
-  version: 1.0.0
+  version: 1.0.1
 servers:
   - url: http://localhost:8080/chatgpt
 paths:
@@ -206,6 +206,10 @@ components:
           title: Top K
           type: integer
           default: 3
+        operator:
+          title: Query Operator
+          type: string
+          enum: [AND, OR]
     QueryRequest:
       title: QueryRequest
       required:

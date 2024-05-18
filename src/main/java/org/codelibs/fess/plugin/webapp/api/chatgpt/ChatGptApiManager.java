@@ -427,6 +427,7 @@ public class ChatGptApiManager extends BaseApiManager {
         final SearchHelper searchHelper = ComponentUtil.getSearchHelper();
         final SearchRenderData data = new SearchRenderData();
         final QueryRequestParams params = new QueryRequestParams(request, fessConfig, query, getResponseFields());
+        request.setAttribute(Query.QUERY, query);
         searchHelper.search(params, data, OptionalThing.empty());
         final QueryResult queryResult = QueryResult.create(query, data);
         return queryResult.toJsonString();
